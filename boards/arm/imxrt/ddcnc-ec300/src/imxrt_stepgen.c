@@ -70,7 +70,6 @@
 
 #  include "arm_internal.h"
 #  include "ram_vectors.h"
-#  include "nvic.h"
 #  include "hardware/imxrt_ccm.h"
 #  include "hardware/imxrt_gpio.h"
 #  include "hardware/imxrt_gpt.h"
@@ -1062,28 +1061,6 @@ static int sg_post(uint32_t op, uint32_t a, uint32_t b, uint32_t c,
 }
 
 /****************************************************************************
- * Name: sg_pendsv
- *
- * Description:
- *   With CONFIG_ARCH_HIPRI_INTERRUPT, arm_doirq() hands PendSV to
- *   irq_dispatch() (it is the hook a high priority interrupt can use to get
- *   back into the OS).  But the OS also pends PendSV itself, for example to
- *   deliver a signal to the running task (up_schedule_sigaction()).  With
- *   nothing attached that ends in irq_unexpected_isr() and a kernel panic:
- *   on this board the first PHY notification signal to the netinit thread
- *   halted the system.  This empty handler lets arm_doirq() go on with the
- *   normal PendSV processing.
- *
- ****************************************************************************/
-
-#ifndef STEPGEN_HOST_TEST
-static int sg_pendsv(int irq, FAR void *context, FAR void *arg)
-{
-  return OK;
-}
-#endif
-
-/****************************************************************************
  * Name: sg_tables
  *
  * Description:
@@ -1213,15 +1190,6 @@ int imxrt_stepgen_initialize(void)
   putreg32(GPT_CR_CLKSRC_IPG | GPT_CR_FRR | GPT_CR_ENMOD |
            GPT_CR_WAITEN | GPT_CR_DBGEN, SG_GPT_CR);
   putreg32(0x3f, SG_GPT_SR);
-
-  /* Keep the OS working with PendSV dispatched (see sg_pendsv()) */
-
-  ret = irq_attach(NVIC_IRQ_PENDSV, sg_pendsv, NULL);
-  if (ret < 0)
-    {
-      _err("ERROR: irq_attach(PendSV) failed: %d\n", ret);
-      return ret;
-    }
 
   /* Zero latency interrupt: in the RAM vector table, above the priority
    * that the OS masks.
