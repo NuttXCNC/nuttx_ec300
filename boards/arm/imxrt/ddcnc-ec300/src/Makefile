@@ -29,6 +29,23 @@ ifeq ($(CONFIG_IMXRT_ENET),y)
 CSRCS += imxrt_ethernet.c
 endif
 
+ifeq ($(CONFIG_DDCNC_EC300_STEPGEN),y)
+CSRCS += imxrt_stepgen.c
+
+# The interrupt runs from RAM: keep loops from becoming memcpy() calls
+# into the flash
+
+imxrt_stepgen.c_CFLAGS += -fno-tree-loop-distribute-patterns
+endif
+
+ifeq ($(CONFIG_BOARDCTL_RESET),y)
+CSRCS += imxrt_reset.c
+endif
+
+ifeq ($(CONFIG_ETC_ROMFS),y)
+RCSRCS = etc/init.d/rc.sysinit etc/init.d/rcS
+endif
+
 ifeq ($(CONFIG_ARCH_LEDS),y)
 CSRCS += imxrt_autoleds.c
 else

@@ -16,4 +16,65 @@ config DDCNC_EC300_PHY_POLL_MSEC
 		this interval, so link up/down events are detected by polling the
 		PHY.
 
+config DDCNC_EC300_STEPGEN
+	bool "CNC step generator"
+	default n
+	depends on ARCH_HIPRI_INTERRUPT && ARCH_RAMVECTORS && ARCH_RAMFUNCS
+	---help---
+		Real-time step generator for the six step/direction outputs, with
+		the digital inputs and outputs of the EC300: a FIFO of
+		setpoints executed by a DDA at 10 MHz / period (default 100 kHz
+		interrupt, 50 kHz step ticks).  It uses GPT2 and a NuttX zero
+		latency (high priority) interrupt that runs from RAM.  Used by the
+		EC300 CNC firmware (apps/industry/cnc/ec300).
+
+if DDCNC_EC300_STEPGEN
+
+choice
+	prompt "Input word layout"
+	default DDCNC_EC300_STEPGEN_LAYOUT_EC300
+
+config DDCNC_EC300_STEPGEN_LAYOUT_EC300
+	bool "EC300"
+	---help---
+		The EC300 input bit layout: 0 EXTERR,
+		1 ESTOP1, 2 PROBE, 3 SYNC, 4 RUN, 5 PAUSE, 6-11 HOME1-6,
+		12/13 HW1 A/B, 14/15 AUX9/10, 16-23 AUX1-8, 24 DRIVEERR,
+		26/27 HW2 A/B.
+
+config DDCNC_EC300_STEPGEN_LAYOUT_V1
+	bool "V1"
+	---help---
+		The input bit layout of the "V1" boards: 0 EXTERR, 1 ESTOP1,
+		2 ESTOP2, 3 PROBE, 4 SYNC, 5 RUN, 6 PAUSE, 7-12 HOME1-6,
+		13-16 HW1/HW2 A/B, 17-22 AUX1-6, 27 DRIVEERR.  Use it with hosts
+		that drive the board as a V1 board (StepStream "board = v1").
+
+endchoice
+
+config DDCNC_EC300_STEPGEN_DIR_INVERT
+	int "Inverted direction outputs (bit mask, bit 0 = X)"
+	default 0
+	range 0 63
+
+config DDCNC_EC300_STEPGEN_STEP_INVERT
+	bool "Invert the step outputs"
+	default n
+	---help---
+		Inverts the step polarity that the host selects (command 0x0a),
+		for boards whose output stage inverts the step signal.
+
+config DDCNC_EC300_STEPGEN_OUTPUT_ACTIVE_LOW
+	bool "Digital outputs are active low"
+	default n
+
+config DDCNC_EC300_STEPGEN_INPUT_INVERT
+	hex "Inverted input word bits"
+	default 0x0
+	---help---
+		Input word bits whose level is inverted before they are used and
+		reported (the inputs are expected active low).
+
+endif # DDCNC_EC300_STEPGEN
+
 endif # ARCH_BOARD_DDCNC_EC300

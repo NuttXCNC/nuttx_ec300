@@ -61,6 +61,16 @@ int imxrt_bringup(void)
     }
 #endif
 
+#ifdef CONFIG_DDCNC_EC300_STEPGEN
+  /* Start the CNC step generator */
+
+  ret = imxrt_stepgen_initialize();
+  if (ret < 0)
+    {
+      syslog(LOG_ERR, "ERROR: imxrt_stepgen_initialize failed: %d\n", ret);
+    }
+#endif
+
   /* If we got here then perhaps not all initialization was successful, but
    * at least enough succeeded to bring-up NSH with perhaps reduced
    * capabilities.

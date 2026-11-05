@@ -57,6 +57,16 @@ SECTIONS
         . = 0x2000 ;
     } >flash
 
+    /* The RAM vector table (CONFIG_ARCH_RAMVECTORS, needed by the zero
+     * latency step interrupt) must be aligned, so it is placed at the
+     * beginning of SRAM.  It is filled at run time (NOLOAD).
+     */
+
+    .ram_vectors (NOLOAD) :
+    {
+        *(.ram_vectors)
+    } > sram
+
     .text :
     {
         _stext = ABSOLUTE(.);
