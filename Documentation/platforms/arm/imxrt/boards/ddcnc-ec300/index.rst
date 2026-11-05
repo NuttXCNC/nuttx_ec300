@@ -50,7 +50,7 @@ LPUART4    Yes     Serial console
 ENET       Yes     LAN8720A PHY, RMII, 50 MHz from MCU
 GPIO       Yes     CONN LED, step/dir, inputs, outputs
 GPT2       Yes     Step generator timer
-LPUART5    No      MPG port, pins already defined
+LPUART5    Yes     MPG port (NVMPG pendant, ``cnc``)
 FlexPWM    No      Spindle 0-10V output (pin not known)
 QDC/ENC    No      Encoder inputs (MPG decoded in software)
 ========== ======= =====================================
@@ -235,11 +235,65 @@ reply), GPIO expansion cards (answered as absent), the
 serial passthrough, and persistent EEPROM writes (the network record is
 emulated in RAM).
 
+NVMPG pendant
+-------------
+
+With ``CONFIG_INDUSTRY_CNC_EC300_MPG`` the server also drives a Digital
+Dream NVMPG pendant on the MPG port.  The pendant talks over LPUART5
+(``/dev/ttyS1``, 115200 8N1, see the ``nvmpg-stm32f1`` board): the EC300
+sends it a status frame 20 times a second and receives its key codes.  The
+handwheel is wired through the cable to the WHA/WHB inputs and decoded by
+the step generator.
+
+* The display shows the positions in work coordinates, the selected axis
+  and step, the RESET lamp (red while the E-stop is latched) and the COMM
+  lamp (a host talks to the board).
+* While no host runs the machine (no motion request for 1 s and the
+  setpoint FIFO empty) the handwheel jogs the selected axis, with the
+  jog speed and acceleration of ``CONFIG_INDUSTRY_CNC_EC300_MPG_VMAX`` and
+  ``_ACCEL``.  A motion request from the host takes the machine over at
+  once.
+* Keys: Axis Up/Down select the axis, Step cycles x1, x10, x100 (and
+  x1000 with ``CONFIG_INDUSTRY_CNC_EC300_MPG_X1000``), Spindle toggles the
+  spindle output, Zero sets the work zero of the axis, 1/2 halves its work
+  coordinate, GOTOZ moves it to the work zero and Home to the machine
+  zero.  The work zeros are kept on the board (in RAM).
+* An x1 click is ``CONFIG_INDUSTRY_CNC_EC300_MPG_X1`` x 0.0001 mm (or
+  degree): 10 (the default) gives the usual 0.001 to 1 mm steps, 1 gives
+  0.0001 to 0.1 mm.  Fractions of a motor step add up.
+* The E-Stop key (right side) latches the E-stop of the step generator at
+  any time, also while the host runs the machine: the motion stops, the
+  outputs go off and the host sees the E-stop in the status.  The Start
+  key (left side) clears it when no host runs the machine; otherwise the
+  host clears it.
+
+A host can drive the pendant itself with the PENDANT command (``0x40``,
+an EC300 extension of the protocol): payload of 35 bytes with the
+six positions to show (int32, 0.0001 units of the host, so it can show mm
+or inch and its own work coordinates), the selected axis and step, the
+FRO/SJR/SRO overrides and the selected one, the lamps (bit 0 RESET, bit 1
+COMM) and the value of the lower right box (int32).  The reply (type
+``0x11``) carries ``present`` (a pendant answers), the number of key
+events and up to 16 key events (key code, ``| 0x80`` when released).
+While the command arrives (at least once a second) the pendant shows the
+host's values and the board neither jogs nor acts on the keys, except the
+E-Stop key, which still latches the E-stop of the board at once (and is
+reported too).  The host reads the handwheel counter in the status.
+Without the command for one second the board drives the pendant again.
+A board without pendant support does not answer the command.
+
+``ec300 status`` also shows the pendant state and the last key codes.
+
+.. note::
+
+   The opto-isolated inputs and outputs need the separate 24 V IO power
+   supply (the IO LED is lit).
+
 .. warning::
 
-   This has been tested with a simulation of the pins on a host (unit
-   tests and complete jobs streamed by the StepStream host), not yet on a
-   machine.  Check the I/O assignment and the step/direction polarity
+   Tested on an EC300 with the drives disconnected: jobs streamed by the
+   StepStream host and the pendant (jog, keys, E-Stop).  It has not run a
+   machine yet.  Check the I/O assignment and the step/direction polarity
    with the motors disconnected, and keep a hardware E-stop.
 
 Motion Control I/O
@@ -358,9 +412,10 @@ cnc
 
 The ``netnsh`` configuration plus the CNC motion controller: the step
 generator with its zero latency interrupt, the ``ec300`` protocol server
-started at boot from ``/etc/init.d/rcS``, and the network defaults
-(172.22.2.100, host name ``EC300``).  NSH stays on the serial
-console.
+started at boot from ``/etc/init.d/rcS``, the NVMPG pendant on the MPG
+port (x1 = 0.0001 mm, x1000 on, handwheel direction inverted) and the
+network defaults (172.22.2.100, host name ``EC300``).  NSH stays on
+the serial console.
 
 netnsh
 ------
