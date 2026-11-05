@@ -16,7 +16,9 @@ The application:
   fields that changed since the last frame are redrawn.
 * Polls the keys every 10 ms, debounces them and sends the key code
   (key index + 2) when a key is pressed and ``code | 0x80`` when it is
-  released.
+  released. The E-Stop button (right side, ``0x0A``) is one of the keys:
+  the controller has to latch the emergency stop when it receives it. The
+  key codes are listed in the board documentation.
 * Draws the axis positions in grey when no frame was received for
   ``CONFIG_INDUSTRY_CNC_NVMPG_DRO_LINK_TIMEOUT`` milliseconds.
 * Optionally shows the NuttX logo at startup.
