@@ -17,9 +17,10 @@ positions, the feed/spindle/jog overrides and the MPG step that the
 controller reports over a serial link.
 
 Inside it there is an STM32F103RCT6 that drives the display, scans the keys
-and talks to the controller. The handwheel encoder and the E-stop are not
-connected to the MCU: they are wired straight through the cable to the
-controller.
+and talks to the controller. The handwheel encoder is not connected to the
+MCU: it is wired straight through the cable to the controller. The E-Stop
+button is one of the keys: the MCU reports it to the controller like the
+others.
 
 This port replaces the original firmware. The ``dro`` configuration speaks the
 same serial protocol, so the pendant keeps working with the controller.
@@ -63,11 +64,13 @@ gpio4   PC2   0x06           Home
 gpio5   PC1   0x07           GOTOZ
 gpio6   PC0   0x08           Zero
 gpio7   PC15  0x09           1/2
-gpio8   PC14  0x0A           Right Side button (START)
-gpio9   PA3   0x0B           Left Side button (STOP)
+gpio8   PC14  0x0A           Right Side button (E-Stop)
+gpio9   PA3   0x0B           Left Side button (Start)
 ======= ===== ============== ==========================
 
 The code column is the byte sent to the controller when the key is pressed.
+The E-Stop button is a momentary key like the others: it is up to the
+controller to latch the emergency stop when it receives ``0x0A``.
 The release code is the same value with bit 7 set (``code | 0x80``).
 
 Serial Protocol

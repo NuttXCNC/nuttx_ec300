@@ -71,8 +71,8 @@
 #define GPIO_KEY5       GPIO_KEY(GPIO_PORTC, GPIO_PIN1)   /* GOTOZ      0x07 */
 #define GPIO_KEY6       GPIO_KEY(GPIO_PORTC, GPIO_PIN0)   /* Zero       0x08 */
 #define GPIO_KEY7       GPIO_KEY(GPIO_PORTC, GPIO_PIN15)  /* 1/2        0x09 */
-#define GPIO_KEY8       GPIO_KEY(GPIO_PORTC, GPIO_PIN14)  /* Side right 0x0a */
-#define GPIO_KEY9       GPIO_KEY(GPIO_PORTA, GPIO_PIN3)   /* Side left  0x0b */
+#define GPIO_KEY8       GPIO_KEY(GPIO_PORTC, GPIO_PIN14)  /* E-Stop     0x0a */
+#define GPIO_KEY9       GPIO_KEY(GPIO_PORTA, GPIO_PIN3)   /* Start      0x0b */
 
 /****************************************************************************
  * Public Function Prototypes
