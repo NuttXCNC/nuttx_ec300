@@ -39,19 +39,20 @@ Features
 Supported peripherals
 =====================
 
-The initial port supports the serial console, the CONN LED and the Ethernet
-interface.  Step generation, digital IO, spindle and MPG drivers will be
-added later.
+The port supports the serial console, the CONN LED, the Ethernet interface
+and, in the ``cnc`` configuration, a real-time step generator with the
+digital inputs and outputs (see `CNC Motion Controller`_).
 
 ========== ======= =====================================
 Peripheral Support NOTES
 ========== ======= =====================================
 LPUART4    Yes     Serial console
 ENET       Yes     LAN8720A PHY, RMII, 50 MHz from MCU
-GPIO       Yes     CONN LED
+GPIO       Yes     CONN LED, step/dir, inputs, outputs
+GPT2       Yes     Step generator timer
 LPUART5    No      MPG port, pins already defined
-FlexPWM    No      Spindle PWM / step generation
-QDC/ENC    No      Encoder inputs
+FlexPWM    No      Spindle 0-10V output (pin not known)
+QDC/ENC    No      Encoder inputs (MPG decoded in software)
 ========== ======= =====================================
 
 Serial Console
@@ -143,11 +144,109 @@ flashes at about 2 Hz, a fatal error was detected and the system has halted.
 If ``CONFIG_ARCH_LEDS`` is not enabled, the CONN LED can be controlled by
 applications with the ``USERLED`` driver.
 
+CNC Motion Controller
+=====================
+
+The ``cnc`` configuration turns the EC300 into a CNC motion board for
+the StepStream host.  The host plans the motion and streams setpoints
+with the EC300 protocol over UDP port 30303; the EC300 executes them:
+
+* ``boards/arm/imxrt/ddcnc-ec300/src/imxrt_stepgen.c`` is the step
+  generator (``CONFIG_DDCNC_EC300_STEPGEN``), API in
+  ``include/ec300_stepgen.h``.
+* ``apps/industry/cnc/ec300`` is the protocol server
+  (``CONFIG_INDUSTRY_CNC_EC300``), started from ``/etc/init.d/rcS``.
+
+Step generator
+--------------
+
+Its step interrupt is a timer interrupt at
+10 MHz / period (period 100 by default, set by the host with command
+0x0a) that alternates a phase raising the step outputs with a phase
+lowering them and running one step tick.  So the default is a 100 kHz
+interrupt, 50 kHz step ticks, 10 us step pulses, and the direction
+outputs change one interrupt (10 us) before the first step.  Each axis
+runs a midpoint DDA (exactly ``|delta|`` steps in
+``ticks`` ticks) from a 252-slot setpoint FIFO (250 usable), with
+underrun and overrun detection.  The handwheel quadrature, the spindle
+index (count, period, synchronized start for G33), the position capture
+(probing, homing) and the E-stop inputs are checked at every tick.
+
+The interrupt is a NuttX *zero latency* interrupt
+(``CONFIG_ARCH_HIPRI_INTERRUPT``): GPT2 compare 1 is attached to the RAM
+vector table (``CONFIG_ARCH_RAMVECTORS``) at ``NVIC_SYSH_HIGH_PRIORITY``,
+above the priority masked by the OS critical sections, so no OS activity
+(network, console, scheduler) can delay a step.  The handler and its data
+are in OCRAM (``CONFIG_ARCH_RAMFUNCS``) because the board executes in place
+from the QSPI flash.  The handler cannot call the OS; the threads talk to
+it lock free (a single producer / single consumer setpoint ring, a
+mailbox it executes at its next tick, and a status snapshot under a
+sequence counter).  GPT2 counts PERCLK (14.667 MHz); the fraction of a count per
+interrupt (132 x period / 90) is carried over, so the rate is exact on
+average.
+
+Options: ``CONFIG_DDCNC_EC300_STEPGEN_LAYOUT_EC300`` (default) or ``_V1``
+selects the bit layout of the input word (the V1 layout is the one the
+StepStream host expects with ``board = v1``).  The direction outputs,
+step outputs, digital outputs and inputs can be inverted.
+
+Input and output assignment
+---------------------------
+
+========== ============== ============== ==============
+EC300      Function       EC300 layout   V1 layout
+========== ============== ============== ==============
+IN01       ESTOP1         1              1
+IN02       PROBE          2              3
+IN03-IN08  HOME1-HOME6    6-11           7-12
+IN09       RUN            4              5
+IN10       PAUSE          5              6
+IN11       EXTERR         0              0
+IN12       DRIVEERR       24             27
+INDEX      spindle index  3              4
+WHA/WHB    handwheel 1    12/13          13/14
+FHA/FHB    handwheel 2    26/27          15/16
+XIN..CIN   AUX1-AUX5      16-20          17-21
+X10IN      AUX6           21             22
+X100IN     AUX7           22             -
+SRO        AUX8           23             -
+EP         MPG E-stop     AUX9 (14)      ESTOP2 (2)
+SRJ        AUX10          15             -
+========== ============== ============== ==============
+
+Outputs OT01..OT10 are the output word bits 0..9: machine on, drive
+enable, spindle on, flood, mist, spindle direction, AUX1..AUX4.  The
+assignment is in ``g_inmap`` of ``imxrt_stepgen.c``.
+
+Protocol server
+---------------
+
+``ec300`` answers the identify command with ``EC300 1.00``
+(``CONFIG_INDUSTRY_CNC_EC300_ID``) and the UDP discovery request
+("Discovery: Who is out there?") with the host name and MAC
+address.  A retransmitted request (same bytes, same sequence number) gets
+the cached reply without being executed again.  ``ec300 status`` prints the
+step generator state.  The board uses the default address
+172.22.2.100/24.
+
+Not implemented: the spindle 0-10V output (its pin is not known yet, the
+PWM commands are accepted), the auxiliary axis (commands 0x20-0x22, no
+reply), GPIO expansion cards (answered as absent), the
+serial passthrough, and persistent EEPROM writes (the network record is
+emulated in RAM).
+
+.. warning::
+
+   This has been tested with a simulation of the pins on a host (unit
+   tests and complete jobs streamed by the StepStream host), not yet on a
+   machine.  Check the I/O assignment and the step/direction polarity
+   with the motors disconnected, and keep a hardware E-stop.
+
 Motion Control I/O
 ==================
 
-Remora uses the following MCU GPIOs for the EC300 machine I/O.  No NuttX
-drivers use them yet; they are listed here for reference.  All inputs are
+Remora uses the following MCU GPIOs for the EC300 machine I/O; the step
+generator of the ``cnc`` configuration uses the same pins.  All inputs are
 active low (opto-isolated).
 
 Step generator outputs:
@@ -253,6 +352,15 @@ nsh
 ---
 
 A basic NuttShell (NSH) configuration on the LPUART4 serial console.
+
+cnc
+---
+
+The ``netnsh`` configuration plus the CNC motion controller: the step
+generator with its zero latency interrupt, the ``ec300`` protocol server
+started at boot from ``/etc/init.d/rcS``, and the network defaults
+(172.22.2.100, host name ``EC300``).  NSH stays on the serial
+console.
 
 netnsh
 ------
