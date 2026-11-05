@@ -193,7 +193,8 @@ enum sg_op_e
   SG_OP_ESTOP,
   SG_OP_FEEDSYNC,
   SG_OP_OVERRUN,
-  SG_OP_TIMER
+  SG_OP_TIMER,
+  SG_OP_FORCE_ESTOP
 };
 
 struct sg_axis_s
@@ -471,6 +472,24 @@ static SG_RAMFUNC void sg_set_timer(uint32_t period, uint32_t polarity)
 }
 
 /****************************************************************************
+ * Name: sg_latch_estop
+ *
+ * Description:
+ *   Latch the E-stop: stop, all outputs off.
+ *
+ ****************************************************************************/
+
+static SG_RAMFUNC void sg_latch_estop(uint8_t cause)
+{
+  g_sg.estop   = true;
+  g_sg.cause   = cause;
+  g_sg.running = false;
+  g_sg.fs_wait = false;
+  g_sg.outputs = 0;
+  sg_apply_outputs(0);
+}
+
+/****************************************************************************
  * Name: sg_mailbox
  *
  * Description:
@@ -610,6 +629,13 @@ static SG_RAMFUNC void sg_mailbox(uint32_t op)
 
       case SG_OP_TIMER:
         sg_set_timer(mb->a, mb->b);
+        break;
+
+      case SG_OP_FORCE_ESTOP:
+        if (!g_sg.estop)
+          {
+            sg_latch_estop(STEPGEN_CAUSE_SOFTWARE);
+          }
         break;
 
       default:
@@ -768,6 +794,7 @@ static SG_RAMFUNC void sg_publish(void)
   p->outputs        = g_sg.outputs;
   p->inputs         = g_sg.inputs;
   p->ticks          = g_sg.ticks;
+  p->moving         = g_sg.remain != 0 || used != 0;
 
   SG_BARRIER();
   g_sg.seq++;
@@ -855,12 +882,7 @@ static SG_RAMFUNC void sg_tick(void)
   mask = sg_tripped();
   if (mask != 0 && !g_sg.estop)
     {
-      g_sg.estop   = true;
-      g_sg.cause   = (uint8_t)(__builtin_ctz(mask) + 1);
-      g_sg.running = false;
-      g_sg.fs_wait = false;
-      g_sg.outputs = 0;
-      sg_apply_outputs(0);
+      sg_latch_estop((uint8_t)(__builtin_ctz(mask) + 1));
     }
 
   /* Capture */
@@ -1356,6 +1378,15 @@ uint32_t stepgen_get_capture(FAR int32_t *pos)
   int ret = sg_post(SG_OP_GETCAPT, 0, 0, 0, NULL, pos);
 
   return ret > 0 ? 1 : 0;
+}
+
+/****************************************************************************
+ * Name: stepgen_estop
+ ****************************************************************************/
+
+void stepgen_estop(void)
+{
+  sg_post(SG_OP_FORCE_ESTOP, 0, 0, 0, NULL, NULL);
 }
 
 /****************************************************************************

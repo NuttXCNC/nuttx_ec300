@@ -121,6 +121,12 @@
 #  define STEPGEN_IN_NAUX      10
 #endif
 
+/* E-stop cause (status cause byte) of a software E-stop, stepgen_estop().
+ * Input E-stops report the input bit + 1.
+ */
+
+#define STEPGEN_CAUSE_SOFTWARE 0xff
+
 /* Output word bits (protocol "V1" layout) */
 
 #define STEPGEN_OUT_MACHON   0
@@ -162,6 +168,7 @@ struct stepgen_status_s
   uint32_t outputs;              /* output word                          */
   uint32_t inputs;               /* input word                           */
   uint32_t ticks;                /* free running step tick counter       */
+  bool     moving;               /* a setpoint is executing or queued    */
 };
 
 /****************************************************************************
@@ -235,6 +242,13 @@ void stepgen_set_capture(uint32_t mask, uint8_t level, uint8_t stop);
  */
 
 uint32_t stepgen_get_capture(FAR int32_t *pos);
+
+/* Latch the E-stop now (e.g. the E-stop key of a pendant): stop at the
+ * next step tick, switch all outputs off and refuse run enable, as an
+ * input E-stop does.  stepgen_clear_error() unlatches it.
+ */
+
+void stepgen_estop(void);
 
 /* Set the E-stop mode: the step generator latches its E-stop (stops, all
  * outputs off, run refused) when an input bit in trip_hi is 1 or an input
